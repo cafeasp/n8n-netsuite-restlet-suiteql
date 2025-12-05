@@ -1,0 +1,55 @@
+{
+  "name": "@cafeasp/n8n-nodes-netsuite-restlet-suiteql",
+  "version": "1.0.0",
+  "description": "n8n node for NetSuite RESTlet and SuiteQL operations with OAuth 1.0a authentication",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "netsuite",
+    "suiteql",
+    "restlet"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/cafeasp/n8n-netsuite-restlet-suiteql",
+  "author": {
+    "name": "cafeasp"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cafeasp/n8n-netsuite-restlet-suiteql.git"
+  },
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/NetSuiteOAuth1Api.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/NetSuite/NetSuite.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint-plugin-n8n-nodes-base": "^1.11.0",
+    "gulp": "^4.0.2",
+    "n8n-workflow": "^1.0.0",
+    "prettier": "^2.7.1",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

@@ -1,0 +1,27 @@
+# Source files
+nodes/
+credentials/
+reference/
+
+# Config files
+tsconfig.json
+gulpfile.js
+.eslintrc*
+.prettierrc*
+
+# Development
+node_modules/
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+docker-compose.yml
+
+# Build artifacts
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
