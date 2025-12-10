@@ -41,6 +41,15 @@ export class NetSuiteOAuth1Api implements ICredentialType {
 			description: 'The base URL for the NetSuite SuiteTalk API (e.g., 1234567.suitetalk.api.netsuite.com)',
 		},
 		{
+			displayName: 'RESTlet Company URL',
+			name: 'restletCompanyUrl',
+			type: 'string',
+			required: false,
+			default: '',
+			placeholder: 'xxxxxxxx.restlets.api.netsuite.com',
+			description: 'The base URL for NetSuite RESTlet calls (e.g., 1234567.restlets.api.netsuite.com). Leave empty to use the Company URL above.',
+		},
+		{
 			displayName: 'Consumer Key',
 			name: 'consumerKey',
 			type: 'string',

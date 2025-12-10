@@ -47,6 +47,10 @@ export class NetSuite implements INodeType {
 						name: 'Record',
 						value: 'record',
 					},
+					{
+						name: 'RESTlet',
+						value: 'restlet',
+					},
 				],
 				default: 'suiteql',
 				required: true,
@@ -121,6 +125,133 @@ export class NetSuite implements INodeType {
 					minValue: 1,
 					maxValue: 1000,
 				},
+			},
+
+			// RESTlet Operations
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+					},
+				},
+				options: [
+					{
+						name: 'Call RESTlet',
+						value: 'call',
+						action: 'Call a RESTlet script',
+					},
+				],
+				default: 'call',
+				description: 'The operation to perform',
+			},
+			{
+				displayName: 'Script ID',
+				name: 'scriptId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+					},
+				},
+				default: '',
+				placeholder: 'customscript_my_restlet',
+				description: 'The Script ID of the RESTlet',
+			},
+			{
+				displayName: 'Deploy ID',
+				name: 'deployId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+					},
+				},
+				default: '',
+				placeholder: 'customdeploy_my_restlet',
+				description: 'The Deploy ID of the RESTlet',
+			},
+			{
+				displayName: 'Body',
+				name: 'restletBody',
+				type: 'json',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+					},
+				},
+				default: '{\n  "id": "search_id",\n  "type": "savesearchdata",\n  "start": 0,\n  "end": 1000\n}',
+				description: 'The JSON body for the RESTlet request',
+			},
+			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+					},
+				},
+				default: false,
+				description: 'Whether to automatically paginate through all results',
+			},
+			{
+				displayName: 'Page Size',
+				name: 'pageSize',
+				type: 'number',
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						returnAll: [true],
+					},
+				},
+				default: 1000,
+				description: 'Number of records to fetch per page',
+			},
+			{
+				displayName: 'Start Index Field',
+				name: 'startIndexField',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						returnAll: [true],
+					},
+				},
+				default: 'start',
+				description: 'The field name in the request body for the start index',
+			},
+			{
+				displayName: 'End Index Field',
+				name: 'endIndexField',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						returnAll: [true],
+					},
+				},
+				default: 'end',
+				description: 'The field name in the request body for the end index',
+			},
+			{
+				displayName: 'Results Field',
+				name: 'resultsField',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						returnAll: [true],
+					},
+				},
+				default: 'results',
+				description: 'The field name in the response that contains the results array',
 			},
 
 			// Record Operations
@@ -216,6 +347,7 @@ export class NetSuite implements INodeType {
 		const {
 			accountId,
 			companyUrl,
+			restletCompanyUrl,
 			consumerKey,
 			consumerSecret,
 			tokenKey,
@@ -473,6 +605,197 @@ export class NetSuite implements INodeType {
 
 					const response = await this.helpers.request(options);
 					returnData.push({ json: response, pairedItem: { item: i } });
+
+				} else if (resource === 'restlet') {
+					const scriptId = this.getNodeParameter('scriptId', i) as string;
+					const deployId = this.getNodeParameter('deployId', i) as string;
+					const restletBody = this.getNodeParameter('restletBody', i) as string;
+					const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+
+					// Parse the JSON body
+					let parsedBody: any;
+					try {
+						parsedBody = typeof restletBody === 'string' ? JSON.parse(restletBody) : restletBody;
+					} catch (parseError) {
+						throw new NodeOperationError(this.getNode(), `Invalid JSON in RESTlet body: ${parseError}`);
+					}
+
+					// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
+					const restletBaseUrl = restletCompanyUrl || companyUrl;
+					
+					// Build RESTlet URL with script and deploy parameters
+					const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl?script=${scriptId}&deploy=${deployId}`;
+
+					if (returnAll) {
+						// Pagination logic
+						const pageSize = this.getNodeParameter('pageSize', i, 1000) as number;
+						const startIndexField = this.getNodeParameter('startIndexField', i, 'start') as string;
+						const endIndexField = this.getNodeParameter('endIndexField', i, 'end') as string;
+						const resultsField = this.getNodeParameter('resultsField', i, 'results') as string;
+
+						let allResults: any[] = [];
+						let currentStart = parsedBody[startIndexField] || 0; // Use initial value from body if provided
+						let hasMore = true;
+
+						while (hasMore) {
+							// Update pagination fields in the body
+							const paginatedBody = {
+								...parsedBody,
+								[startIndexField]: currentStart,
+								[endIndexField]: currentStart + pageSize,
+							};
+
+							// Generate OAuth for this request
+							const timestamp = Math.floor(Date.now() / 1000).toString();
+							const nonce = crypto.randomBytes(16).toString('hex');
+
+							const oauthParams: Record<string, string> = {
+								oauth_consumer_key: consumerKey as string,
+								oauth_token: tokenKey as string,
+								oauth_signature_method: 'HMAC-SHA256',
+								oauth_timestamp: timestamp,
+								oauth_nonce: nonce,
+								oauth_version: '1.0',
+							};
+
+							const allParams: Record<string, string> = { 
+								...oauthParams,
+								script: scriptId,
+								deploy: deployId,
+							};
+
+							const sortedParams = Object.keys(allParams)
+								.sort()
+								.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
+								.join('&');
+
+							const baseUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
+							const baseString = `POST&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
+							const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
+
+							const signature = crypto
+								.createHmac('sha256', signingKey)
+								.update(baseString)
+								.digest('base64');
+
+							const authHeader = `OAuth realm="${accountId}",` +
+								`oauth_consumer_key="${oauthParams.oauth_consumer_key}",` +
+								`oauth_token="${oauthParams.oauth_token}",` +
+								`oauth_signature_method="${oauthParams.oauth_signature_method}",` +
+								`oauth_timestamp="${oauthParams.oauth_timestamp}",` +
+								`oauth_nonce="${oauthParams.oauth_nonce}",` +
+								`oauth_version="${oauthParams.oauth_version}",` +
+								`oauth_signature="${encodeURIComponent(signature)}"`;
+
+							const options = {
+								headers: {
+									'Authorization': authHeader,
+									'Content-Type': 'application/json',
+								},
+								method: 'POST' as const,
+								body: paginatedBody,
+								url: restletUrl,
+								json: true,
+							};
+
+							const response = await this.helpers.request(options);
+
+							// Check if response has the results field
+							if (resultsField in response) {
+								const results = response[resultsField];
+								
+								if (Array.isArray(results) && results.length > 0) {
+									allResults = allResults.concat(results);
+									currentStart += pageSize;
+									
+									// Check if we got fewer results than requested (last page)
+									if (results.length < pageSize) {
+										hasMore = false;
+									}
+								} else {
+									// Empty results array means no more data
+									hasMore = false;
+								}
+							} else {
+								// If results field doesn't exist, return the whole response
+								// and stop pagination
+								returnData.push({ json: response, pairedItem: { item: i } });
+								hasMore = false;
+								break;
+							}
+						}
+
+						// Only push aggregated results if we actually collected them
+						if (allResults.length > 0 || resultsField in (allResults as any)) {
+							returnData.push({ json: { [resultsField]: allResults, total: allResults.length }, pairedItem: { item: i } });
+						}
+
+					} else {
+						// Single request without pagination
+						requestData = {
+							url: restletUrl,
+							method: 'POST',
+							body: parsedBody,
+						};
+
+						// --- OAuth 1.0a Header Generation for RESTlet ---
+						const timestamp = Math.floor(Date.now() / 1000).toString();
+						const nonce = crypto.randomBytes(16).toString('hex');
+
+						const oauthParams: Record<string, string> = {
+							oauth_consumer_key: consumerKey as string,
+							oauth_token: tokenKey as string,
+							oauth_signature_method: 'HMAC-SHA256',
+							oauth_timestamp: timestamp,
+							oauth_nonce: nonce,
+							oauth_version: '1.0',
+						};
+
+						// Include URL query parameters in signature
+						const allParams: Record<string, string> = { 
+							...oauthParams,
+							script: scriptId,
+							deploy: deployId,
+						};
+
+						const sortedParams = Object.keys(allParams)
+							.sort()
+							.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
+							.join('&');
+
+						const baseUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
+						const baseString = `${requestData.method}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
+						const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
+
+						const signature = crypto
+							.createHmac('sha256', signingKey)
+							.update(baseString)
+							.digest('base64');
+
+						const authHeader = `OAuth realm="${accountId}",` +
+							`oauth_consumer_key="${oauthParams.oauth_consumer_key}",` +
+							`oauth_token="${oauthParams.oauth_token}",` +
+							`oauth_signature_method="${oauthParams.oauth_signature_method}",` +
+							`oauth_timestamp="${oauthParams.oauth_timestamp}",` +
+							`oauth_nonce="${oauthParams.oauth_nonce}",` +
+							`oauth_version="${oauthParams.oauth_version}",` +
+							`oauth_signature="${encodeURIComponent(signature)}"`;
+
+						// --- API Request ---
+						const options = {
+							headers: {
+								'Authorization': authHeader,
+								'Content-Type': 'application/json',
+							},
+							method: requestData.method as 'POST',
+							body: requestData.body,
+							url: requestData.url,
+							json: true,
+						};
+
+						const response = await this.helpers.request(options);
+						returnData.push({ json: response, pairedItem: { item: i } });
+					}
 
 				} else {
 					throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not supported.`);
