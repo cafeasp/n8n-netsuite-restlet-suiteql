@@ -241,8 +241,8 @@ export class NetSuite implements INodeType {
 				description: 'The field name in the request body for the end index',
 			},
 			{
-				displayName: 'Results Field',
-				name: 'resultsField',
+				displayName: 'Output Field Name',
+				name: 'outputFieldName',
 				type: 'string',
 				displayOptions: {
 					show: {
@@ -251,7 +251,7 @@ export class NetSuite implements INodeType {
 					},
 				},
 				default: 'results',
-				description: 'The field name in the response that contains the results array',
+				description: 'The field name to use in the output for the combined results array',
 			},
 
 			// Record Operations
@@ -631,7 +631,7 @@ export class NetSuite implements INodeType {
 						const pageSize = this.getNodeParameter('pageSize', i, 1000) as number;
 						const startIndexField = this.getNodeParameter('startIndexField', i, 'start') as string;
 						const endIndexField = this.getNodeParameter('endIndexField', i, 'end') as string;
-						const resultsField = this.getNodeParameter('resultsField', i, 'results') as string;
+						const outputFieldName = this.getNodeParameter('outputFieldName', i, 'results') as string;
 
 						let allResults: any[] = [];
 						let currentStart = parsedBody[startIndexField] || 0; // Use initial value from body if provided
@@ -700,34 +700,53 @@ export class NetSuite implements INodeType {
 
 							const response = await this.helpers.request(options);
 
-							// Check if response has the results field
-							if (resultsField in response) {
-								const results = response[resultsField];
+							// Handle response - auto-detect array or extract from common field names
+							let results: any[] | undefined;
+							
+							if (Array.isArray(response)) {
+								// RESTlet returns a direct array
+								results = response;
+							} else if (typeof response === 'object' && response !== null) {
+								// Check common field names for arrays
+								const possibleFields = ['results', 'data', 'items', 'records'];
 								
-								if (Array.isArray(results) && results.length > 0) {
-									allResults = allResults.concat(results);
-									currentStart += pageSize;
-									
-									// Check if we got fewer results than requested (last page)
-									if (results.length < pageSize) {
-										hasMore = false;
+								for (const field of possibleFields) {
+									if (field in response && Array.isArray(response[field])) {
+										results = response[field];
+										break;
 									}
-								} else {
-									// Empty results array means no more data
+								}
+								
+								if (!results) {
+									// Response doesn't contain a recognizable array, return as-is
+									returnData.push({ json: response, pairedItem: { item: i } });
 									hasMore = false;
+									break;
 								}
 							} else {
-								// If results field doesn't exist, return the whole response
-								// and stop pagination
+								// Response is neither array nor object, return as-is
 								returnData.push({ json: response, pairedItem: { item: i } });
 								hasMore = false;
 								break;
 							}
+							
+							if (results && results.length > 0) {
+								allResults = allResults.concat(results);
+								currentStart += pageSize;
+								
+								// Check if we got fewer results than requested (last page)
+								if (results.length < pageSize) {
+									hasMore = false;
+								}
+							} else {
+								// Empty results array means no more data
+								hasMore = false;
+							}
 						}
 
-						// Only push aggregated results if we actually collected them
-						if (allResults.length > 0 || resultsField in (allResults as any)) {
-							returnData.push({ json: { [resultsField]: allResults, total: allResults.length }, pairedItem: { item: i } });
+						// Return aggregated results
+						if (allResults.length > 0) {
+							returnData.push({ json: { [outputFieldName]: allResults, total: allResults.length }, pairedItem: { item: i } });
 						}
 
 					} else {
