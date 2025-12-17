@@ -601,10 +601,29 @@ export class NetSuite implements INodeType {
 						body: requestData.body,
 						url: requestData.url,
 						json: true,
+						resolveWithFullResponse: true,
 					};
 
 					const response = await this.helpers.request(options);
-					returnData.push({ json: response, pairedItem: { item: i } });
+					
+					// Handle response - NetSuite often returns 204 with Location header for Create operations
+					let responseData: any = response.body || {};
+					
+					// If Create operation and we got a Location header, extract the ID
+					if (operation === 'create' && response.headers && response.headers.location) {
+						const location = response.headers.location as string;
+						// Extract ID from Location header (e.g., /record/v1/salesOrder/12345)
+						const idMatch = location.match(/\/([^\/]+)$/);
+						if (idMatch) {
+							responseData = {
+								...responseData,
+								id: idMatch[1],
+								location: location,
+							};
+						}
+					}
+					
+					returnData.push({ json: responseData, pairedItem: { item: i } });
 
 				} else if (resource === 'restlet') {
 					const scriptId = this.getNodeParameter('scriptId', i) as string;

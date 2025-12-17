@@ -170,7 +170,7 @@ The response will contain:
 ### Record Operations
 
 #### Create
-Create a new record in NetSuite.
+Create a new record in NetSuite. Returns the newly created record's ID and location.
 
 **Example Body**:
 ```json
@@ -188,6 +188,16 @@ Create a new record in NetSuite.
   }
 }
 ```
+
+**Response**:
+```json
+{
+  "id": "54321",
+  "location": "/services/rest/record/v1/salesOrder/54321"
+}
+```
+
+The node automatically extracts the record ID from the Location header returned by NetSuite.
 
 #### Get
 Retrieve a record by its internal ID.
