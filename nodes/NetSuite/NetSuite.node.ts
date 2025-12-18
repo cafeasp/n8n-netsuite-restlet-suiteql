@@ -144,6 +144,11 @@ export class NetSuite implements INodeType {
 						value: 'call',
 						action: 'Call a RESTlet script',
 					},
+					{
+						name: 'Upload File',
+						value: 'uploadFile',
+						action: 'Upload a file to NetSuite',
+					},
 				],
 				default: 'call',
 				description: 'The operation to perform',
@@ -156,6 +161,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 					},
 				},
 				default: '',
@@ -170,6 +176,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 					},
 				},
 				default: '',
@@ -184,6 +191,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 					},
 				},
 				default: '{\n  "id": "search_id",\n  "type": "savesearchdata",\n  "start": 0,\n  "end": 1000\n}',
@@ -196,6 +204,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 					},
 				},
 				default: false,
@@ -208,6 +217,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 						returnAll: [true],
 					},
 				},
@@ -221,6 +231,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 						returnAll: [true],
 					},
 				},
@@ -234,6 +245,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 						returnAll: [true],
 					},
 				},
@@ -247,11 +259,72 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['restlet'],
+						operation: ['call'],
 						returnAll: [true],
 					},
 				},
 				default: 'results',
 				description: 'The field name to use in the output for the combined results array',
+			},
+
+			// File Upload specific fields
+			{
+				displayName: 'RESTlet Script ID',
+				name: 'uploadScriptId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						operation: ['uploadFile'],
+					},
+				},
+				default: '',
+				placeholder: '123',
+				description: 'The Script ID of the RESTlet to call (e.g., 123)',
+			},
+			{
+				displayName: 'RESTlet Deployment ID',
+				name: 'uploadDeploymentId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						operation: ['uploadFile'],
+					},
+				},
+				default: '',
+				placeholder: '1',
+				description: 'The Deployment ID of the RESTlet to call (e.g., 1)',
+			},
+			{
+				displayName: 'Folder ID',
+				name: 'folderId',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						operation: ['uploadFile'],
+					},
+				},
+				default: '',
+				description: 'The internal ID of the destination folder. This will be sent in the JSON payload.',
+			},
+			{
+				displayName: 'File Name',
+				name: 'fileName',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['restlet'],
+						operation: ['uploadFile'],
+					},
+				},
+				default: '={{ $binary.data.fileName }}',
+				description: 'The name for the uploaded file. This will be sent in the JSON payload.',
 			},
 
 			// Record Operations
@@ -626,26 +699,27 @@ export class NetSuite implements INodeType {
 					returnData.push({ json: responseData, pairedItem: { item: i } });
 
 				} else if (resource === 'restlet') {
-					const scriptId = this.getNodeParameter('scriptId', i) as string;
-					const deployId = this.getNodeParameter('deployId', i) as string;
-					const restletBody = this.getNodeParameter('restletBody', i) as string;
-					const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+					if (operation === 'call') {
+						const scriptId = this.getNodeParameter('scriptId', i) as string;
+						const deployId = this.getNodeParameter('deployId', i) as string;
+						const restletBody = this.getNodeParameter('restletBody', i) as string;
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
 
-					// Parse the JSON body
-					let parsedBody: any;
-					try {
-						parsedBody = typeof restletBody === 'string' ? JSON.parse(restletBody) : restletBody;
-					} catch (parseError) {
-						throw new NodeOperationError(this.getNode(), `Invalid JSON in RESTlet body: ${parseError}`);
-					}
+						// Parse the JSON body
+						let parsedBody: any;
+						try {
+							parsedBody = typeof restletBody === 'string' ? JSON.parse(restletBody) : restletBody;
+						} catch (parseError) {
+							throw new NodeOperationError(this.getNode(), `Invalid JSON in RESTlet body: ${parseError}`);
+						}
 
-					// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
-					const restletBaseUrl = restletCompanyUrl || companyUrl;
-					
-					// Build RESTlet URL with script and deploy parameters
-					const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl?script=${scriptId}&deploy=${deployId}`;
+						// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
+						const restletBaseUrl = restletCompanyUrl || companyUrl;
+						
+						// Build RESTlet URL with script and deploy parameters
+						const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl?script=${scriptId}&deploy=${deployId}`;
 
-					if (returnAll) {
+						if (returnAll) {
 						// Pagination logic
 						const pageSize = this.getNodeParameter('pageSize', i, 1000) as number;
 						const startIndexField = this.getNodeParameter('startIndexField', i, 'start') as string;
@@ -835,9 +909,113 @@ export class NetSuite implements INodeType {
 						returnData.push({ json: response, pairedItem: { item: i } });
 					}
 
+					} else if (operation === 'uploadFile') {
+					// File Upload Operation
+					const uploadScriptId = this.getNodeParameter('uploadScriptId', i) as string;
+					const uploadDeploymentId = this.getNodeParameter('uploadDeploymentId', i) as string;
+					const folderId = this.getNodeParameter('folderId', i) as string;
+					const fileName = this.getNodeParameter('fileName', i) as string;
+
+					if (!items[i].binary || !items[i].binary?.data) {
+						throw new NodeOperationError(this.getNode(), `No binary data found on item ${i}. The node expects an incoming file.`);
+					}
+
+					// Determine File Type from Extension
+					const extension = fileName.split('.').pop()?.toLowerCase();
+					let fileType = '';
+
+					if (extension === 'pdf') {
+						fileType = 'PDF';
+					} else if (extension === 'xlsx' || extension === 'xls') {
+						fileType = 'EXCEL';
+					} else {
+						throw new NodeOperationError(this.getNode(), `Unsupported file type: .${extension}. Only PDF and Excel files are supported.`);
+					}
+
+					// Prepare JSON Body with Base64 Content
+					const fileBuffer = await this.helpers.getBinaryDataBuffer(i, 'data');
+					const base64Content = fileBuffer.toString('base64');
+
+					const requestBody = {
+						postType: "uploadFile",
+						folderId: folderId,
+						name: fileName,
+						base64Content: base64Content,
+						fileType: fileType,
+					};
+
+					// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
+					const restletBaseUrl = restletCompanyUrl || companyUrl;
+					const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
+
+					// OAuth 1.0a Header Generation for RESTlet
+					const timestamp = Math.floor(Date.now() / 1000).toString();
+					const nonce = crypto.randomBytes(16).toString('hex');
+
+					const oauthParams: Record<string, string> = {
+						oauth_consumer_key: consumerKey as string,
+						oauth_token: tokenKey as string,
+						oauth_signature_method: 'HMAC-SHA256',
+						oauth_timestamp: timestamp,
+						oauth_nonce: nonce,
+						oauth_version: '1.0',
+					};
+
+					// Add script and deploy IDs to OAuth parameters for signature
+					const allParams: Record<string, string> = {
+						...oauthParams,
+						script: uploadScriptId,
+						deploy: uploadDeploymentId,
+					};
+
+					const sortedParams = Object.keys(allParams)
+						.sort()
+						.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
+						.join('&');
+
+					const baseString = `POST&${encodeURIComponent(restletUrl)}&${encodeURIComponent(sortedParams)}`;
+					const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
+
+					const signature = crypto
+						.createHmac('sha256', signingKey)
+						.update(baseString)
+						.digest('base64');
+
+					const authHeader = `OAuth realm="${accountId}",` +
+						`oauth_consumer_key="${oauthParams.oauth_consumer_key}",` +
+						`oauth_token="${oauthParams.oauth_token}",` +
+						`oauth_signature_method="${oauthParams.oauth_signature_method}",` +
+						`oauth_timestamp="${oauthParams.oauth_timestamp}",` +
+						`oauth_nonce="${oauthParams.oauth_nonce}",` +
+						`oauth_version="${oauthParams.oauth_version}",` +
+						`oauth_signature="${encodeURIComponent(signature)}"`;
+
+					// API Request
+					const options = {
+						headers: {
+							'Authorization': authHeader,
+							'Content-Type': 'application/json',
+						},
+						method: 'POST' as const,
+						body: requestBody,
+						qs: {
+							script: uploadScriptId,
+							deploy: uploadDeploymentId,
+						},
+						url: restletUrl,
+						json: true,
+					};
+
+					const response = await this.helpers.request(options);
+					returnData.push({ json: response, pairedItem: { item: i } });
+
 				} else {
-					throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not supported.`);
+					throw new NodeOperationError(this.getNode(), `The operation "${operation}" is not supported for RESTlet resource.`);
 				}
+
+			} else {
+				throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not supported.`);
+			}
 
 			} catch (error) {
 				if (this.continueOnFail()) {
