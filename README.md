@@ -15,6 +15,7 @@ This is an n8n community node that lets you interact with NetSuite using OAuth 1
   - **Automatic Pagination**: Fetch all pages of results with configurable start/end indices
   - **Flexible Configuration**: Customize field names for pagination and results
   - **Custom Company URL**: Support for different RESTlet domains
+  - **File Upload**: Upload PDF and Excel files to NetSuite via RESTlet
 - **Record Operations**: Full CRUD operations on NetSuite records
   - Create records
   - Get records by ID
@@ -119,7 +120,11 @@ ORDER BY
 
 ### RESTlet Operations
 
-Call custom NetSuite RESTlet scripts with automatic pagination support.
+Call custom NetSuite RESTlet scripts with automatic pagination support and file upload capabilities.
+
+#### Call RESTlet
+
+Execute a custom RESTlet script with optional automatic pagination.
 
 #### Parameters
 
@@ -166,6 +171,44 @@ The response will contain:
   "total": 5432
 }
 ```
+
+#### Upload File
+
+Upload PDF or Excel files to NetSuite via a RESTlet endpoint. The node automatically converts the file to base64 and determines the file type from the extension.
+
+**Parameters**:
+- **RESTlet Script ID**: The numeric Script ID of your upload RESTlet (e.g., `123`)
+- **RESTlet Deployment ID**: The numeric Deployment ID (e.g., `1`)
+- **Folder ID**: The internal ID of the destination folder in NetSuite
+- **File Name**: The name for the uploaded file (defaults to `{{ $binary.data.fileName }}`)
+
+**Supported File Types**:
+- PDF files (`.pdf`) - Automatically detected as `PDF` type
+- Excel files (`.xlsx`, `.xls`) - Automatically detected as `EXCEL` type
+
+**Request Body Sent**:
+```json
+{
+  "postType": "uploadFile",
+  "folderId": "12345",
+  "name": "document.pdf",
+  "base64Content": "JVBERi0xLjQKJeLjz9MKMyAwIG9iai...",
+  "fileType": "PDF"
+}
+```
+
+**Prerequisites**:
+- Your RESTlet must accept file upload requests with the structure above
+- The RESTlet should create a file record in NetSuite using the base64 content
+- Input data must contain binary data (use Read/Download Binary File node before this)
+
+**Example Workflow**:
+1. Use "HTTP Request" or "Read Binary File" node to get a file
+2. Connect to the NetSuite node
+3. Select Resource: **RESTlet**
+4. Select Operation: **Upload File**
+5. Configure the RESTlet IDs and folder ID
+6. The file will be uploaded automatically
 
 ### Record Operations
 
@@ -228,6 +271,12 @@ Transform one record type into another (e.g., Sales Order to Invoice).
 - [NetSuite OAuth 1.0 Setup](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545141316.html)
 
 ## Version History
+
+### 1.0.3
+- Added file upload capability to RESTlet operations
+- Support for uploading PDF and Excel files to NetSuite
+- Automatic file type detection based on extension
+- Base64 encoding handled automatically
 
 ### 1.0.0
 - Initial release
