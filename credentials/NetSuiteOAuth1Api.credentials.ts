@@ -22,6 +22,7 @@ export class NetSuiteOAuth1Api implements ICredentialType {
 	icon: Icon = 'file:netsuite-icon-hex.svg';
 
 	// Defines the fields that will appear in the credentials form
+	//RESTlet URL is mandatory for certain operations, so we add an optional field for it
 	properties: INodeProperties[] = [
 		{
 			displayName: 'Account ID',
