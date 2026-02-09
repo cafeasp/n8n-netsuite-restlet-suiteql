@@ -934,17 +934,39 @@ export class NetSuite implements INodeType {
 							throw new NodeOperationError(this.getNode(), `Unsupported file type: .${extension}. Only PDF, Excel, and CSV files are supported.`);
 						}
 
-						// Prepare JSON Body with Base64 Content
+						// Prepare JSON Body with file content
 						const fileBuffer = await this.helpers.getBinaryDataBuffer(i, 'data');
-						const base64Content = fileBuffer.toString('base64');
 
-						const requestBody = {
-							postType: "uploadFile",
-							folderId: folderId,
-							name: fileName,
-							base64Content: base64Content,
-							fileType: fileType,
+						let requestBody: {
+							postType: string;
+							folderId: string;
+							name: string;
+							fileType: string;
+							base64Content?: string;
+							content?: string;
 						};
+
+						if (extension === 'csv') {
+							// CSV is text-based, send as UTF-8 string
+							const textContent = fileBuffer.toString('utf-8');
+							requestBody = {
+								postType: "uploadFile",
+								folderId: folderId,
+								name: fileName,
+								content: textContent,
+								fileType: fileType,
+							};
+						} else {
+							// Binary files (PDF, Excel) use base64
+							const base64Content = fileBuffer.toString('base64');
+							requestBody = {
+								postType: "uploadFile",
+								folderId: folderId,
+								name: fileName,
+								base64Content: base64Content,
+								fileType: fileType,
+							};
+						}
 
 						// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
 						const restletBaseUrl = restletCompanyUrl || companyUrl;
