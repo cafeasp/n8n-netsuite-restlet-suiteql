@@ -519,7 +519,7 @@ export class NetSuite implements INodeType {
 							// Parse URL to separate base URL and query parameters
 							const urlObj = new URL(nextUrl);
 							const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
-							
+
 							// Generate new OAuth signature for pagination request
 							timestamp = Math.floor(Date.now() / 1000).toString();
 							nonce = crypto.randomBytes(16).toString('hex');
@@ -678,10 +678,10 @@ export class NetSuite implements INodeType {
 					};
 
 					const response = await this.helpers.request(options);
-					
+
 					// Handle response - NetSuite often returns 204 with Location header for Create operations
 					let responseData: any = response.body || {};
-					
+
 					// If Create operation and we got a Location header, extract the ID
 					if (operation === 'create' && response.headers && response.headers.location) {
 						const location = response.headers.location as string;
@@ -695,7 +695,7 @@ export class NetSuite implements INodeType {
 							};
 						}
 					}
-					
+
 					returnData.push({ json: responseData, pairedItem: { item: i } });
 
 				} else if (resource === 'restlet') {
@@ -715,30 +715,142 @@ export class NetSuite implements INodeType {
 
 						// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
 						const restletBaseUrl = restletCompanyUrl || companyUrl;
-						
+
 						// Build RESTlet URL with script and deploy parameters
 						const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl?script=${scriptId}&deploy=${deployId}`;
 
 						if (returnAll) {
-						// Pagination logic
-						const pageSize = this.getNodeParameter('pageSize', i, 1000) as number;
-						const startIndexField = this.getNodeParameter('startIndexField', i, 'start') as string;
-						const endIndexField = this.getNodeParameter('endIndexField', i, 'end') as string;
-						const outputFieldName = this.getNodeParameter('outputFieldName', i, 'results') as string;
+							// Pagination logic
+							const pageSize = this.getNodeParameter('pageSize', i, 1000) as number;
+							const startIndexField = this.getNodeParameter('startIndexField', i, 'start') as string;
+							const endIndexField = this.getNodeParameter('endIndexField', i, 'end') as string;
+							const outputFieldName = this.getNodeParameter('outputFieldName', i, 'results') as string;
 
-						let allResults: any[] = [];
-						let currentStart = parsedBody[startIndexField] || 0; // Use initial value from body if provided
-						let hasMore = true;
+							let allResults: any[] = [];
+							let currentStart = parsedBody[startIndexField] || 0; // Use initial value from body if provided
+							let hasMore = true;
 
-						while (hasMore) {
-							// Update pagination fields in the body
-							const paginatedBody = {
-								...parsedBody,
-								[startIndexField]: currentStart,
-								[endIndexField]: currentStart + pageSize,
+							while (hasMore) {
+								// Update pagination fields in the body
+								const paginatedBody = {
+									...parsedBody,
+									[startIndexField]: currentStart,
+									[endIndexField]: currentStart + pageSize,
+								};
+
+								// Generate OAuth for this request
+								const timestamp = Math.floor(Date.now() / 1000).toString();
+								const nonce = crypto.randomBytes(16).toString('hex');
+
+								const oauthParams: Record<string, string> = {
+									oauth_consumer_key: consumerKey as string,
+									oauth_token: tokenKey as string,
+									oauth_signature_method: 'HMAC-SHA256',
+									oauth_timestamp: timestamp,
+									oauth_nonce: nonce,
+									oauth_version: '1.0',
+								};
+
+								const allParams: Record<string, string> = {
+									...oauthParams,
+									script: scriptId,
+									deploy: deployId,
+								};
+
+								const sortedParams = Object.keys(allParams)
+									.sort()
+									.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
+									.join('&');
+
+								const baseUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
+								const baseString = `POST&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
+								const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
+
+								const signature = crypto
+									.createHmac('sha256', signingKey)
+									.update(baseString)
+									.digest('base64');
+
+								const authHeader = `OAuth realm="${accountId}",` +
+									`oauth_consumer_key="${oauthParams.oauth_consumer_key}",` +
+									`oauth_token="${oauthParams.oauth_token}",` +
+									`oauth_signature_method="${oauthParams.oauth_signature_method}",` +
+									`oauth_timestamp="${oauthParams.oauth_timestamp}",` +
+									`oauth_nonce="${oauthParams.oauth_nonce}",` +
+									`oauth_version="${oauthParams.oauth_version}",` +
+									`oauth_signature="${encodeURIComponent(signature)}"`;
+
+								const options = {
+									headers: {
+										'Authorization': authHeader,
+										'Content-Type': 'application/json',
+									},
+									method: 'POST' as const,
+									body: paginatedBody,
+									url: restletUrl,
+									json: true,
+								};
+
+								const response = await this.helpers.request(options);
+
+								// Handle response - auto-detect array or extract from common field names
+								let results: any[] | undefined;
+
+								if (Array.isArray(response)) {
+									// RESTlet returns a direct array
+									results = response;
+								} else if (typeof response === 'object' && response !== null) {
+									// Check common field names for arrays
+									const possibleFields = ['results', 'data', 'items', 'records'];
+
+									for (const field of possibleFields) {
+										if (field in response && Array.isArray(response[field])) {
+											results = response[field];
+											break;
+										}
+									}
+
+									if (!results) {
+										// Response doesn't contain a recognizable array, return as-is
+										returnData.push({ json: response, pairedItem: { item: i } });
+										hasMore = false;
+										break;
+									}
+								} else {
+									// Response is neither array nor object, return as-is
+									returnData.push({ json: response, pairedItem: { item: i } });
+									hasMore = false;
+									break;
+								}
+
+								if (results && results.length > 0) {
+									allResults = allResults.concat(results);
+									currentStart += pageSize;
+
+									// Check if we got fewer results than requested (last page)
+									if (results.length < pageSize) {
+										hasMore = false;
+									}
+								} else {
+									// Empty results array means no more data
+									hasMore = false;
+								}
+							}
+
+							// Return aggregated results
+							if (allResults.length > 0) {
+								returnData.push({ json: { [outputFieldName]: allResults, total: allResults.length }, pairedItem: { item: i } });
+							}
+
+						} else {
+							// Single request without pagination
+							requestData = {
+								url: restletUrl,
+								method: 'POST',
+								body: parsedBody,
 							};
 
-							// Generate OAuth for this request
+							// --- OAuth 1.0a Header Generation for RESTlet ---
 							const timestamp = Math.floor(Date.now() / 1000).toString();
 							const nonce = crypto.randomBytes(16).toString('hex');
 
@@ -751,7 +863,8 @@ export class NetSuite implements INodeType {
 								oauth_version: '1.0',
 							};
 
-							const allParams: Record<string, string> = { 
+							// Include URL query parameters in signature
+							const allParams: Record<string, string> = {
 								...oauthParams,
 								script: scriptId,
 								deploy: deployId,
@@ -763,7 +876,7 @@ export class NetSuite implements INodeType {
 								.join('&');
 
 							const baseUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
-							const baseString = `POST&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
+							const baseString = `${requestData.method}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
 							const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
 
 							const signature = crypto
@@ -780,77 +893,64 @@ export class NetSuite implements INodeType {
 								`oauth_version="${oauthParams.oauth_version}",` +
 								`oauth_signature="${encodeURIComponent(signature)}"`;
 
+							// --- API Request ---
 							const options = {
 								headers: {
 									'Authorization': authHeader,
 									'Content-Type': 'application/json',
 								},
-								method: 'POST' as const,
-								body: paginatedBody,
-								url: restletUrl,
+								method: requestData.method as 'POST',
+								body: requestData.body,
+								url: requestData.url,
 								json: true,
 							};
 
 							const response = await this.helpers.request(options);
-
-							// Handle response - auto-detect array or extract from common field names
-							let results: any[] | undefined;
-							
-							if (Array.isArray(response)) {
-								// RESTlet returns a direct array
-								results = response;
-							} else if (typeof response === 'object' && response !== null) {
-								// Check common field names for arrays
-								const possibleFields = ['results', 'data', 'items', 'records'];
-								
-								for (const field of possibleFields) {
-									if (field in response && Array.isArray(response[field])) {
-										results = response[field];
-										break;
-									}
-								}
-								
-								if (!results) {
-									// Response doesn't contain a recognizable array, return as-is
-									returnData.push({ json: response, pairedItem: { item: i } });
-									hasMore = false;
-									break;
-								}
-							} else {
-								// Response is neither array nor object, return as-is
-								returnData.push({ json: response, pairedItem: { item: i } });
-								hasMore = false;
-								break;
-							}
-							
-							if (results && results.length > 0) {
-								allResults = allResults.concat(results);
-								currentStart += pageSize;
-								
-								// Check if we got fewer results than requested (last page)
-								if (results.length < pageSize) {
-									hasMore = false;
-								}
-							} else {
-								// Empty results array means no more data
-								hasMore = false;
-							}
+							returnData.push({ json: response, pairedItem: { item: i } });
 						}
 
-						// Return aggregated results
-						if (allResults.length > 0) {
-							returnData.push({ json: { [outputFieldName]: allResults, total: allResults.length }, pairedItem: { item: i } });
+					} else if (operation === 'uploadFile') {
+						// File Upload Operation
+						const uploadScriptId = this.getNodeParameter('uploadScriptId', i) as string;
+						const uploadDeploymentId = this.getNodeParameter('uploadDeploymentId', i) as string;
+						const folderId = this.getNodeParameter('folderId', i) as string;
+						const fileName = this.getNodeParameter('fileName', i) as string;
+
+						if (!items[i].binary || !items[i].binary?.data) {
+							throw new NodeOperationError(this.getNode(), `No binary data found on item ${i}. The node expects an incoming file.`);
 						}
 
-					} else {
-						// Single request without pagination
-						requestData = {
-							url: restletUrl,
-							method: 'POST',
-							body: parsedBody,
+						// Determine File Type from Extension
+						const extension = fileName.split('.').pop()?.toLowerCase();
+						let fileType = '';
+
+						if (extension === 'pdf') {
+							fileType = 'PDF';
+						} else if (extension === 'xlsx' || extension === 'xls') {
+							fileType = 'EXCEL';
+						} else if (extension === 'csv') {
+							fileType = 'CSV';
+						} else {
+							throw new NodeOperationError(this.getNode(), `Unsupported file type: .${extension}. Only PDF, Excel, and CSV files are supported.`);
+						}
+
+						// Prepare JSON Body with Base64 Content
+						const fileBuffer = await this.helpers.getBinaryDataBuffer(i, 'data');
+						const base64Content = fileBuffer.toString('base64');
+
+						const requestBody = {
+							postType: "uploadFile",
+							folderId: folderId,
+							name: fileName,
+							base64Content: base64Content,
+							fileType: fileType,
 						};
 
-						// --- OAuth 1.0a Header Generation for RESTlet ---
+						// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
+						const restletBaseUrl = restletCompanyUrl || companyUrl;
+						const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
+
+						// OAuth 1.0a Header Generation for RESTlet
 						const timestamp = Math.floor(Date.now() / 1000).toString();
 						const nonce = crypto.randomBytes(16).toString('hex');
 
@@ -863,11 +963,11 @@ export class NetSuite implements INodeType {
 							oauth_version: '1.0',
 						};
 
-						// Include URL query parameters in signature
-						const allParams: Record<string, string> = { 
+						// Add script and deploy IDs to OAuth parameters for signature
+						const allParams: Record<string, string> = {
 							...oauthParams,
-							script: scriptId,
-							deploy: deployId,
+							script: uploadScriptId,
+							deploy: uploadDeploymentId,
 						};
 
 						const sortedParams = Object.keys(allParams)
@@ -875,8 +975,7 @@ export class NetSuite implements INodeType {
 							.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
 							.join('&');
 
-						const baseUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
-						const baseString = `${requestData.method}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
+						const baseString = `POST&${encodeURIComponent(restletUrl)}&${encodeURIComponent(sortedParams)}`;
 						const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
 
 						const signature = crypto
@@ -893,129 +992,32 @@ export class NetSuite implements INodeType {
 							`oauth_version="${oauthParams.oauth_version}",` +
 							`oauth_signature="${encodeURIComponent(signature)}"`;
 
-						// --- API Request ---
+						// API Request
 						const options = {
 							headers: {
 								'Authorization': authHeader,
 								'Content-Type': 'application/json',
 							},
-							method: requestData.method as 'POST',
-							body: requestData.body,
-							url: requestData.url,
+							method: 'POST' as const,
+							body: requestBody,
+							qs: {
+								script: uploadScriptId,
+								deploy: uploadDeploymentId,
+							},
+							url: restletUrl,
 							json: true,
 						};
 
 						const response = await this.helpers.request(options);
 						returnData.push({ json: response, pairedItem: { item: i } });
-					}
 
-					} else if (operation === 'uploadFile') {
-					// File Upload Operation
-					const uploadScriptId = this.getNodeParameter('uploadScriptId', i) as string;
-					const uploadDeploymentId = this.getNodeParameter('uploadDeploymentId', i) as string;
-					const folderId = this.getNodeParameter('folderId', i) as string;
-					const fileName = this.getNodeParameter('fileName', i) as string;
-
-					if (!items[i].binary || !items[i].binary?.data) {
-						throw new NodeOperationError(this.getNode(), `No binary data found on item ${i}. The node expects an incoming file.`);
-					}
-
-					// Determine File Type from Extension
-					const extension = fileName.split('.').pop()?.toLowerCase();
-					let fileType = '';
-
-					if (extension === 'pdf') {
-						fileType = 'PDF';
-					} else if (extension === 'xlsx' || extension === 'xls') {
-						fileType = 'EXCEL';
 					} else {
-						throw new NodeOperationError(this.getNode(), `Unsupported file type: .${extension}. Only PDF and Excel files are supported.`);
+						throw new NodeOperationError(this.getNode(), `The operation "${operation}" is not supported for RESTlet resource.`);
 					}
-
-					// Prepare JSON Body with Base64 Content
-					const fileBuffer = await this.helpers.getBinaryDataBuffer(i, 'data');
-					const base64Content = fileBuffer.toString('base64');
-
-					const requestBody = {
-						postType: "uploadFile",
-						folderId: folderId,
-						name: fileName,
-						base64Content: base64Content,
-						fileType: fileType,
-					};
-
-					// Use RESTlet Company URL if provided, otherwise fall back to regular Company URL
-					const restletBaseUrl = restletCompanyUrl || companyUrl;
-					const restletUrl = `https://${restletBaseUrl}/app/site/hosting/restlet.nl`;
-
-					// OAuth 1.0a Header Generation for RESTlet
-					const timestamp = Math.floor(Date.now() / 1000).toString();
-					const nonce = crypto.randomBytes(16).toString('hex');
-
-					const oauthParams: Record<string, string> = {
-						oauth_consumer_key: consumerKey as string,
-						oauth_token: tokenKey as string,
-						oauth_signature_method: 'HMAC-SHA256',
-						oauth_timestamp: timestamp,
-						oauth_nonce: nonce,
-						oauth_version: '1.0',
-					};
-
-					// Add script and deploy IDs to OAuth parameters for signature
-					const allParams: Record<string, string> = {
-						...oauthParams,
-						script: uploadScriptId,
-						deploy: uploadDeploymentId,
-					};
-
-					const sortedParams = Object.keys(allParams)
-						.sort()
-						.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
-						.join('&');
-
-					const baseString = `POST&${encodeURIComponent(restletUrl)}&${encodeURIComponent(sortedParams)}`;
-					const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
-
-					const signature = crypto
-						.createHmac('sha256', signingKey)
-						.update(baseString)
-						.digest('base64');
-
-					const authHeader = `OAuth realm="${accountId}",` +
-						`oauth_consumer_key="${oauthParams.oauth_consumer_key}",` +
-						`oauth_token="${oauthParams.oauth_token}",` +
-						`oauth_signature_method="${oauthParams.oauth_signature_method}",` +
-						`oauth_timestamp="${oauthParams.oauth_timestamp}",` +
-						`oauth_nonce="${oauthParams.oauth_nonce}",` +
-						`oauth_version="${oauthParams.oauth_version}",` +
-						`oauth_signature="${encodeURIComponent(signature)}"`;
-
-					// API Request
-					const options = {
-						headers: {
-							'Authorization': authHeader,
-							'Content-Type': 'application/json',
-						},
-						method: 'POST' as const,
-						body: requestBody,
-						qs: {
-							script: uploadScriptId,
-							deploy: uploadDeploymentId,
-						},
-						url: restletUrl,
-						json: true,
-					};
-
-					const response = await this.helpers.request(options);
-					returnData.push({ json: response, pairedItem: { item: i } });
 
 				} else {
-					throw new NodeOperationError(this.getNode(), `The operation "${operation}" is not supported for RESTlet resource.`);
+					throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not supported.`);
 				}
-
-			} else {
-				throw new NodeOperationError(this.getNode(), `The resource "${resource}" is not supported.`);
-			}
 
 			} catch (error) {
 				if (this.continueOnFail()) {
