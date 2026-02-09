@@ -953,7 +953,7 @@ export class NetSuite implements INodeType {
 								postType: "uploadFile",
 								folderId: folderId,
 								name: fileName,
-								content: textContent,
+								base64Content: textContent,
 								fileType: fileType,
 							};
 						} else {
