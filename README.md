@@ -15,7 +15,7 @@ This is an n8n community node that lets you interact with NetSuite using OAuth 1
   - **Automatic Pagination**: Fetch all pages of results with configurable start/end indices
   - **Flexible Configuration**: Customize field names for pagination and results
   - **Custom Company URL**: Support for different RESTlet domains
-  - **File Upload**: Upload PDF and Excel files to NetSuite via RESTlet
+  - **File Upload**: Upload PDF, Excel, and CSV files to NetSuite via RESTlet
 - **Record Operations**: Full CRUD operations on NetSuite records
   - Create records
   - Get records by ID
@@ -174,7 +174,7 @@ The response will contain:
 
 #### Upload File
 
-Upload PDF or Excel files to NetSuite via a RESTlet endpoint. The node automatically converts the file to base64 and determines the file type from the extension.
+Upload PDF, Excel, or CSV files to NetSuite via a RESTlet endpoint. The node automatically converts the file to base64 and determines the file type from the extension.
 
 **Parameters**:
 - **RESTlet Script ID**: The numeric Script ID of your upload RESTlet (e.g., `123`)
@@ -185,6 +185,7 @@ Upload PDF or Excel files to NetSuite via a RESTlet endpoint. The node automatic
 **Supported File Types**:
 - PDF files (`.pdf`) - Automatically detected as `PDF` type
 - Excel files (`.xlsx`, `.xls`) - Automatically detected as `EXCEL` type
+- CSV files (`.csv`) - Automatically detected as `CSV` type
 
 **Request Body Sent**:
 ```json
