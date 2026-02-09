@@ -1,6 +1,6 @@
 {
   "name": "@cafeasp/n8n-nodes-netsuite-restlet-suiteql",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "n8n node for NetSuite RESTlet and SuiteQL operations with OAuth 1.0a authentication",
   "keywords": [
     "n8n-community-node-package",
