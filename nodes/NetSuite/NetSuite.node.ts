@@ -943,7 +943,6 @@ export class NetSuite implements INodeType {
 							name: string;
 							fileType: string;
 							base64Content?: string;
-							content?: string;
 						};
 
 						if (extension === 'csv') {
@@ -953,7 +952,7 @@ export class NetSuite implements INodeType {
 								postType: "uploadFile",
 								folderId: folderId,
 								name: fileName,
-								base64Content: textContent,
+								base64Content: textContent,//note custom restlet is expecting field name base64Content for both text and binary files, it will handle the decoding based on fileType
 								fileType: fileType,
 							};
 						} else {
