@@ -606,7 +606,7 @@ export class NetSuite implements INodeType {
 					// Specific logic for Transform
 					if (operation === 'transform') {
 						const targetRecordType = this.getNodeParameter('targetRecordType', i) as string;
-						url += `/!transform/${targetRecordType}`;
+						url += `/%21transform/${targetRecordType}`;
 					}
 
 					const methodMap: { [key: string]: string } = {
