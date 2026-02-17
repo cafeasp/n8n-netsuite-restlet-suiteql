@@ -9,6 +9,20 @@ import {
 import * as crypto from 'crypto';
 
 /**
+ * RFC 5849 compliant percent-encoding for OAuth 1.0a signature base string.
+ * encodeURIComponent doesn't encode: ! * ' ( ) which OAuth requires.
+ * This is needed for URLs containing special characters like /!transform/
+ */
+function encodeRfc5849(str: string): string {
+	return encodeURIComponent(str)
+		.replace(/!/g, '%21')
+		.replace(/\*/g, '%2A')
+		.replace(/'/g, '%27')
+		.replace(/\(/g, '%28')
+		.replace(/\)/g, '%29');
+}
+
+/**
  * Implements the main logic for the NetSuite Custom Node.
  */
 export class NetSuite implements INodeType {
@@ -606,7 +620,7 @@ export class NetSuite implements INodeType {
 					// Specific logic for Transform
 					if (operation === 'transform') {
 						const targetRecordType = this.getNodeParameter('targetRecordType', i) as string;
-						url += `/%21transform/${targetRecordType}`;
+						url += `/!transform/${targetRecordType}`;
 					}
 
 					const methodMap: { [key: string]: string } = {
@@ -646,7 +660,11 @@ export class NetSuite implements INodeType {
 						.map(key => `${encodeURIComponent(key)}=${encodeURIComponent(oauthParams[key as keyof typeof oauthParams])}`)
 						.join('&');
 
-					const baseString = `${requestData.method}&${encodeURIComponent(requestData.url)}&${encodeURIComponent(sortedParams)}`;
+					// Use RFC 5849 encoding for transform operation (URL contains !)
+					const encodedUrl = operation === 'transform'
+						? encodeRfc5849(requestData.url)
+						: encodeURIComponent(requestData.url);
+					const baseString = `${requestData.method}&${encodedUrl}&${encodeURIComponent(sortedParams)}`;
 					const signingKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
 
 					const signature = crypto
