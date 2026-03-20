@@ -403,6 +403,77 @@ export class NetSuite implements INodeType {
 				default: '',
 				description: 'The internal ID of the record',
 			},
+			// Duplicate Detection (Record > Create only)
+			{
+				displayName: 'Duplicate Detection',
+				name: 'enableDuplicateDetection',
+				type: 'boolean',
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['create'],
+					},
+				},
+				default: false,
+				description: 'Whether to check for existing duplicates before creating a record. Uses a SuiteQL query to look up matching field values.',
+			},
+			{
+				displayName: 'SuiteQL Table Name',
+				name: 'duplicateCheckTable',
+				type: 'string',
+				required: true,
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['create'],
+						enableDuplicateDetection: [true],
+					},
+				},
+				default: '',
+				placeholder: 'transaction',
+				description: 'The SuiteQL table name to query for duplicates. Note: this may differ from the REST API record type (e.g., use "transaction" for salesOrder, "entity" for customer).',
+			},
+			{
+				displayName: 'Duplicate Check Fields',
+				name: 'duplicateCheckFields',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				displayOptions: {
+					show: {
+						resource: ['record'],
+						operation: ['create'],
+						enableDuplicateDetection: [true],
+					},
+				},
+				default: {},
+				description: 'Fields to match against for duplicate detection. All conditions are combined with AND logic.',
+				options: [
+					{
+						name: 'fieldValues',
+						displayName: 'Field',
+						values: [
+							{
+								displayName: 'NetSuite Field',
+								name: 'netsuiteField',
+								type: 'string',
+								default: '',
+								placeholder: 'otherrefnum',
+								description: 'The internal field name in NetSuite to check against',
+							},
+							{
+								displayName: 'Match Value',
+								name: 'matchValue',
+								type: 'string',
+								default: '',
+								placeholder: '={{ $json.poNumber }}',
+								description: 'The value to match against',
+							},
+						],
+					},
+				],
+			},
 			{
 				displayName: 'Body',
 				name: 'body',
