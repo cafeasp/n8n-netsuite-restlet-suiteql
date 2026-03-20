@@ -17,7 +17,7 @@ This is an n8n community node that lets you interact with NetSuite using OAuth 1
   - **Custom Company URL**: Support for different RESTlet domains
   - **File Upload**: Upload PDF, Excel, and CSV files to NetSuite via RESTlet
 - **Record Operations**: Full CRUD operations on NetSuite records
-  - Create records
+  - Create records with optional **Duplicate Detection**
   - Get records by ID
   - Update records (PUT and PATCH)
   - Post actions to records
@@ -216,6 +216,25 @@ Upload PDF, Excel, or CSV files to NetSuite via a RESTlet endpoint. The node aut
 #### Create
 Create a new record in NetSuite. Returns the newly created record's ID and location.
 
+**Duplicate Detection** (optional): Enable to check for existing duplicates before creating a record. When enabled, the node runs a SuiteQL query to look up matching field values. If a duplicate is found, the creation is skipped and a marker is output instead.
+
+- **Duplicate Detection**: Toggle on/off (default: off)
+- **SuiteQL Table Name**: The SuiteQL table to query (e.g., `transaction` for salesOrder, `entity` for customer). Note: SuiteQL table names differ from REST API record types.
+- **Duplicate Check Fields**: One or more field mappings (combined with AND logic):
+  - **NetSuite Field**: The internal field name to check (e.g., `otherrefnum`)
+  - **Match Value**: The value to match against (supports expressions, e.g., `={{ $json.poNumber }}`)
+
+When a duplicate is found, the node outputs:
+```json
+{
+  "skipped": true,
+  "reason": "duplicate",
+  "duplicateId": "12345",
+  "recordType": "salesOrder",
+  "matchedFields": { "otherrefnum": "PO-1234", "entity": "42" }
+}
+```
+
 **Example Body**:
 ```json
 {
@@ -272,6 +291,13 @@ Transform one record type into another (e.g., Sales Order to Invoice).
 - [NetSuite OAuth 1.0 Setup](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545141316.html)
 
 ## Version History
+
+### 1.0.13
+- Added **Duplicate Detection** for Record > Create operation
+  - Optional SuiteQL-based pre-check before creating records
+  - Configurable field mappings with AND logic for matching
+  - Skips duplicate creation with informative output marker
+  - Input validation and SQL injection prevention
 
 ### 1.0.3
 - Added file upload capability to RESTlet operations
