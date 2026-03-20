@@ -681,6 +681,138 @@ export class NetSuite implements INodeType {
 					const recordId = this.getNodeParameter('recordId', i, '') as string;
 					const body = this.getNodeParameter('body', i, {}) as object;
 
+					// --- Duplicate Detection (Create only) ---
+					if (operation === 'create') {
+						const enableDuplicateDetection = this.getNodeParameter('enableDuplicateDetection', i, false) as boolean;
+
+						if (enableDuplicateDetection) {
+							const duplicateCheckTable = this.getNodeParameter('duplicateCheckTable', i) as string;
+							const duplicateCheckFields = this.getNodeParameter('duplicateCheckFields', i, {}) as {
+								fieldValues?: Array<{ netsuiteField: string; matchValue: string }>;
+							};
+
+							const fieldValues = duplicateCheckFields.fieldValues || [];
+
+							if (fieldValues.length === 0) {
+								throw new NodeOperationError(
+									this.getNode(),
+									'At least one duplicate check field is required when duplicate detection is enabled.',
+								);
+							}
+
+							// Validate table name (alphanumeric and underscores only)
+							if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(duplicateCheckTable)) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Invalid SuiteQL table name: "${duplicateCheckTable}". Use only letters, numbers, and underscores.`,
+								);
+							}
+
+							// Build WHERE conditions with proper escaping
+							const conditions = fieldValues.map((field) => {
+								const col = field.netsuiteField;
+								const val = field.matchValue;
+
+								// Validate column name (alphanumeric, underscores, dots for joined fields)
+								if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(col)) {
+									throw new NodeOperationError(
+										this.getNode(),
+										`Invalid field name: "${col}". Use only letters, numbers, underscores, and dots.`,
+									);
+								}
+
+								// Strict numeric check: only plain integers and decimals
+								if (/^-?\d+(\.\d+)?$/.test(val)) {
+									return `${col} = ${val}`;
+								}
+								const escaped = val.replace(/'/g, "''");
+								return `${col} = '${escaped}'`;
+							});
+
+							const query = `SELECT id FROM ${duplicateCheckTable} WHERE ${conditions.join(' AND ')} FETCH FIRST 1 ROWS ONLY`;
+
+							// Execute SuiteQL duplicate check
+							const dupCheckBaseUrl = `https://${companyUrl}/services/rest/query/v1/suiteql`;
+							const dupCheckUrl = `${dupCheckBaseUrl}?limit=1`;
+
+							const dupTimestamp = Math.floor(Date.now() / 1000).toString();
+							const dupNonce = crypto.randomBytes(16).toString('hex');
+
+							const dupOauthParams: Record<string, string> = {
+								oauth_consumer_key: consumerKey as string,
+								oauth_token: tokenKey as string,
+								oauth_signature_method: 'HMAC-SHA256',
+								oauth_timestamp: dupTimestamp,
+								oauth_nonce: dupNonce,
+								oauth_version: '1.0',
+							};
+
+							// Include limit in signature params (same pattern as existing SuiteQL block)
+							const dupAllParams: Record<string, string> = {
+								...dupOauthParams,
+								limit: '1',
+							};
+
+							const dupSortedParams = Object.keys(dupAllParams)
+								.sort()
+								.map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(dupAllParams[key])}`)
+								.join('&');
+
+							const dupBaseString = `POST&${encodeURIComponent(dupCheckBaseUrl)}&${encodeURIComponent(dupSortedParams)}`;
+							const dupSigningKey = `${encodeURIComponent(consumerSecret as string)}&${encodeURIComponent(tokenSecret as string)}`;
+
+							const dupSignature = crypto
+								.createHmac('sha256', dupSigningKey)
+								.update(dupBaseString)
+								.digest('base64');
+
+							const dupAuthHeader =
+								`OAuth realm="${accountId}",` +
+								`oauth_consumer_key="${dupOauthParams.oauth_consumer_key}",` +
+								`oauth_token="${dupOauthParams.oauth_token}",` +
+								`oauth_signature_method="${dupOauthParams.oauth_signature_method}",` +
+								`oauth_timestamp="${dupOauthParams.oauth_timestamp}",` +
+								`oauth_nonce="${dupOauthParams.oauth_nonce}",` +
+								`oauth_version="${dupOauthParams.oauth_version}",` +
+								`oauth_signature="${encodeURIComponent(dupSignature)}"`;
+
+							const dupOptions = {
+								headers: {
+									'Authorization': dupAuthHeader,
+									'Content-Type': 'application/json',
+									'Prefer': 'transient',
+								},
+								method: 'POST' as const,
+								body: { q: query },
+								url: dupCheckUrl,
+								json: true,
+							};
+
+							const dupResponse: any = await this.helpers.request(dupOptions);
+							const dupItems = dupResponse.items || [];
+
+							if (dupItems.length > 0) {
+								// Duplicate found — skip creation, output marker
+								const matchedFields: Record<string, string> = {};
+								for (const field of fieldValues) {
+									matchedFields[field.netsuiteField] = field.matchValue;
+								}
+
+								returnData.push({
+									json: {
+										skipped: true,
+										reason: 'duplicate',
+										duplicateId: String(dupItems[0].id),
+										recordType,
+										matchedFields,
+									},
+									pairedItem: { item: i },
+								});
+								continue;
+							}
+						}
+					}
+
 					let url = `https://${companyUrl}/services/rest/record/v1/${recordType}`;
 
 					// Append ID for operations that target a specific record
