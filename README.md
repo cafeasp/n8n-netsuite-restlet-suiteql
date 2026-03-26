@@ -283,6 +283,23 @@ Transform one record type into another (e.g., Sales Order to Invoice).
 - **Record ID**: The ID of the source record
 - **Body**: Optional JSON to override fields in the transformed record
 
+#### Delete
+Delete a record by internal ID.
+
+| Parameter   | Description                                    |
+|------------|------------------------------------------------|
+| Record Type | The record type (e.g., `salesOrder`, `customer`) |
+| Record ID   | The internal ID of the record to delete         |
+
+**Output:**
+```json
+{
+  "deleted": true,
+  "recordType": "salesOrder",
+  "recordId": "12345"
+}
+```
+
 ## Resources
 
 - [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
