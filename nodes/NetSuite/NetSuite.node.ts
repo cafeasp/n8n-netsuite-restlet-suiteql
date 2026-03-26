@@ -359,6 +359,7 @@ export class NetSuite implements INodeType {
 					{ name: 'Update (PATCH)', value: 'patch', action: 'Partially update a record by ID' },
 					{ name: 'Post Action', value: 'post', action: 'Post an action to a record' },
 					{ name: 'Transform', value: 'transform', action: 'Transform a record (e.g. Sales Order to Invoice)' },
+					{ name: 'Delete', value: 'delete', action: 'Delete a record by internal ID' },
 				],
 				default: 'get',
 				description: 'The operation to perform on the record',
@@ -397,7 +398,7 @@ export class NetSuite implements INodeType {
 				displayOptions: {
 					show: {
 						resource: ['record'],
-						operation: ['get', 'update', 'patch', 'post', 'transform'],
+						operation: ['get', 'update', 'patch', 'post', 'transform', 'delete'],
 					},
 				},
 				default: '',
