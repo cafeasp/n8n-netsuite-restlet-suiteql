@@ -817,7 +817,7 @@ export class NetSuite implements INodeType {
 					let url = `https://${companyUrl}/services/rest/record/v1/${recordType}`;
 
 					// Append ID for operations that target a specific record
-					if (['get', 'update', 'patch', 'post', 'transform'].includes(operation) && recordId) {
+					if (['get', 'update', 'patch', 'post', 'transform', 'delete'].includes(operation) && recordId) {
 						url += `/${recordId}`;
 					}
 
@@ -834,15 +834,16 @@ export class NetSuite implements INodeType {
 						patch: 'PATCH',
 						post: 'POST',
 						transform: 'POST',
+						delete: 'DELETE',
 					};
 
 					requestData = {
 						url,
 						method: methodMap[operation],
-						body: ['get'].includes(operation) ? undefined : body,
+						body: ['get', 'delete'].includes(operation) ? undefined : body,
 					};
 
-					if (!recordId && ['get', 'update', 'patch', 'post', 'transform'].includes(operation)) {
+					if (!recordId && ['get', 'update', 'patch', 'post', 'transform', 'delete'].includes(operation)) {
 						throw new NodeOperationError(this.getNode(), 'Record ID is required for this operation.');
 					}
 
@@ -892,7 +893,7 @@ export class NetSuite implements INodeType {
 							'Content-Type': 'application/json',
 							'Prefer': 'transient',
 						},
-						method: requestData.method as 'POST' | 'GET' | 'PUT' | 'PATCH',
+						method: requestData.method as 'POST' | 'GET' | 'PUT' | 'PATCH' | 'DELETE',
 						body: requestData.body,
 						url: requestData.url,
 						json: true,
@@ -903,6 +904,15 @@ export class NetSuite implements INodeType {
 
 					// Handle response - NetSuite often returns 204 with Location header for Create operations
 					let responseData: any = response.body || {};
+
+					// If Delete operation, return confirmation object (NetSuite returns 204 No Content)
+					if (operation === 'delete') {
+						responseData = {
+							deleted: true,
+							recordType,
+							recordId,
+						};
+					}
 
 					// If Create operation and we got a Location header, extract the ID
 					if (operation === 'create' && response.headers && response.headers.location) {
