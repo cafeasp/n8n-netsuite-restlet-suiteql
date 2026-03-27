@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/cafeasp/n8n-netsuite-restlet-suiteql.git"
+    "url": "git+https://github.com/cafeasp/n8n-netsuite-restlet-suiteql.git"
   },
   "scripts": {
     "build": "tsc && gulp build:icons",
